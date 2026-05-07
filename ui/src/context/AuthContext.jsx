@@ -1,46 +1,37 @@
-import { useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useState } from "react";
 
-import { decodeToken } from '../utils/helpers.js'
-import { AuthContext } from './auth-context.js'
+const AuthContext = createContext();
 
-const TOKEN_KEY = 'ev-station-token'
+export const AuthProvider = ({ children }) => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
 
-function readStoredToken() {
-  if (typeof window === 'undefined') {
-    return ''
+  const login = (userData) => {
+    setUser(userData);
+    setIsAuthenticated(true);
+  };
+
+  const logout = () => {
+    setUser(null);
+    setIsAuthenticated(false);
+  };
+
+  const value = {
+    isAuthenticated,
+    user,
+    login,
+    logout,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
   }
+  return context;
+};
 
-  return window.localStorage.getItem(TOKEN_KEY) || ''
-}
-
-export function AuthProvider({ children }) {
-  const [token, setToken] = useState(readStoredToken)
-  const user = useMemo(() => decodeToken(token), [token])
-
-  useEffect(() => {
-    if (token && !user) {
-      setToken('')
-    }
-  }, [token, user])
-
-  useEffect(() => {
-    if (token) {
-      window.localStorage.setItem(TOKEN_KEY, token)
-    } else {
-      window.localStorage.removeItem(TOKEN_KEY)
-    }
-  }, [token])
-
-  const value = useMemo(
-    () => ({
-      token,
-      user,
-      isAuthenticated: Boolean(user),
-      login: (nextToken) => setToken(nextToken),
-      logout: () => setToken(''),
-    }),
-    [token, user],
-  )
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
-}
+export default AuthContext;
