@@ -28,3 +28,4 @@ dist-ssr
 # Local secrets
 .claude/settings.local.json
 
+.claude
