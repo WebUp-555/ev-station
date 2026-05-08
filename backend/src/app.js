@@ -8,9 +8,10 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
 
-app.use(cors( {
-  origin: process.env.CORS_ORIGIN || "http://localhost:3000",
-} ));
+app.use(cors({
+  origin: "https://ev-station-sigma.vercel.app",
+  credentials: true
+}));
 app.use(express.json());
 app.use(limiter);
 
