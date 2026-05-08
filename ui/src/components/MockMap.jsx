@@ -14,6 +14,7 @@ export const MockMap = ({
   zoomable = true,
   className = "",
   compact = false,
+  location = "San Francisco",
 }) => {
   const navigate = useNavigate();
 
@@ -153,7 +154,7 @@ export const MockMap = ({
       {!compact && (
         <div className="absolute top-4 left-4 z-30 flex items-center gap-2 text-[10px] font-mono uppercase tracking-[0.2em] text-emerald-300/80 bg-black/60 backdrop-blur border border-emerald-500/20 rounded-full px-3 py-1">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          Live · San Francisco
+          Live · {location}
         </div>
       )}
     </div>

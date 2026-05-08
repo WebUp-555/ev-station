@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { MapPin, Zap, Star, Navigation, ChevronRight } from "lucide-react";
 import StatusBadge from "@/components/StatusBadge";
 
-export const StationCard = ({ station, isNearest = false, compact = false }) => {
+export const StationCard = ({ station, isNearest = false, compact = false, isSelected = false }) => {
   const navigate = useNavigate();
 
   const handleClick = () => navigate(`/station/${station.id}`);
@@ -14,7 +14,8 @@ export const StationCard = ({ station, isNearest = false, compact = false }) => 
       onClick={handleClick}
       className={`group w-full text-left rounded-2xl border bg-[#101013] p-4 transition-all duration-300
         hover:-translate-y-0.5 hover:border-emerald-500/40 hover:shadow-[0_8px_32px_rgba(16,185,129,0.10)]
-        ${isNearest ? "border-emerald-500/50 ring-1 ring-emerald-500/30" : "border-zinc-800"}`}
+        ${isNearest ? "border-emerald-500/50 ring-1 ring-emerald-500/30" : "border-zinc-800"}
+        ${isSelected ? "ring-2 ring-emerald-400/40 shadow-[0_12px_40px_rgba(16,185,129,0.12)]" : ""}`}
     >
       <div className="flex items-start gap-3">
         <div

@@ -20,7 +20,10 @@ import Navbar from "@/components/Navbar";
 import MockMap from "@/components/MockMap";
 import StatusBadge from "@/components/StatusBadge";
 import { toast } from "sonner";
-import { STATIONS, NEAREST_STATION_ID } from "@/data/stations";
+import { api } from "@/services/api";
+import { getNearbyStations } from "@/services/stationService";
+import { useAuth } from "@/context/AuthContext";
+import { useStations } from "@/context/StationContext";
 
 const HERO_IMG =
   "https://images.unsplash.com/photo-1767042286259-d38926e1f2a4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjV8MHwxfHNlYXJjaHwzfHxlbGVjdHJpYyUyMHZlaGljbGUlMjBjaGFyZ2luZyUyMG5pZ2h0fGVufDB8fHx8MTc3ODE2MzQwMXww&ixlib=rb-4.1.0&q=85";
@@ -28,12 +31,100 @@ const HERO_IMG =
 export default function StationDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const station = STATIONS.find((s) => s.id === id);
+  const { token } = useAuth();
+  const { lastStations } = useStations();
+  const [station, setStation] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [favorited, setFavorited] = useState(false);
+  const [isNearest, setIsNearest] = useState(false);
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [id]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStation = async () => {
+      try {
+        setLoading(true);
+        // First try to find in last searched stations (from SearchPage or other pages)
+        let foundStation = lastStations.find((station) => station.id === id);
+        
+        if (!foundStation) {
+          // Fallback: fetch nearby stations from user location
+          const nearbyStations = await getNearbyStations();
+          foundStation = nearbyStations.find((station) => station.id === id) || null;
+        }
+
+        if (!active) return;
+
+        setStation(foundStation);
+        setIsNearest(Boolean(foundStation && lastStations[0]?.id === foundStation.id));
+      } catch {
+        if (active) {
+          setStation(null);
+          setIsNearest(false);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadStation();
+
+    return () => {
+      active = false;
+    };
+  }, [id, lastStations]);
+
+  useEffect(() => {
+    if (!station || !token) {
+      setFavorited(false);
+      return;
+    }
+
+    let active = true;
+
+    const loadFavorites = async () => {
+      try {
+        const favorites = await api.favorites.list(token);
+        const saved = favorites.some(
+          (favorite) =>
+            favorite.name === station.name &&
+            Math.abs(Number(favorite.lat) - station.coords.lat) < 0.0001 &&
+            Math.abs(Number(favorite.lng) - station.coords.lng) < 0.0001
+        );
+
+        if (active) {
+          setFavorited(saved);
+        }
+      } catch {
+        if (active) {
+          setFavorited(false);
+        }
+      }
+    };
+
+    loadFavorites();
+
+    return () => {
+      active = false;
+    };
+  }, [station, token]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#050505] text-white grid place-items-center px-6">
+        <div className="text-center">
+          <h1 className="font-display text-3xl font-bold">Loading station</h1>
+          <p className="mt-2 text-zinc-500">Fetching real station data from the backend.</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!station) {
     return (
@@ -56,6 +147,36 @@ export default function StationDetailsPage() {
   const handleNavigate = () => {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${station.coords.lat},${station.coords.lng}`;
     window.open(url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleFavorite = async () => {
+    if (!token) {
+      toast.error("Sign in to save favorites");
+      navigate("/auth");
+      return;
+    }
+
+    try {
+      if (favorited) {
+        await api.favorites.remove(token, {
+          name: station.name,
+          lat: station.coords.lat,
+          lng: station.coords.lng,
+        });
+        setFavorited(false);
+        toast("Removed from favorites");
+      } else {
+        await api.favorites.add(token, {
+          name: station.name,
+          lat: station.coords.lat,
+          lng: station.coords.lng,
+        });
+        setFavorited(true);
+        toast.success("Added to favorites");
+      }
+    } catch (error) {
+      toast.error(error.message || "Could not update favorites");
+    }
   };
 
   const handleShare = async () => {
@@ -101,7 +222,7 @@ export default function StationDetailsPage() {
                 <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 rounded-full px-2.5 py-1">
                   {station.operator}
                 </span>
-                {station.id === NEAREST_STATION_ID && (
+                {isNearest && (
                   <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-300 bg-blue-500/15 border border-blue-500/30 rounded-full px-2.5 py-1">
                     Nearest to you
                   </span>
@@ -110,10 +231,7 @@ export default function StationDetailsPage() {
               <div className="absolute top-4 right-4 flex items-center gap-2">
                 <button
                   data-testid="favorite-btn"
-                  onClick={() => {
-                    setFavorited((v) => !v);
-                    toast(favorited ? "Removed from favorites" : "Added to favorites");
-                  }}
+                  onClick={handleFavorite}
                   className={`w-9 h-9 rounded-xl backdrop-blur border grid place-items-center transition
                     ${favorited
                       ? "bg-red-500/20 border-red-500/40 text-red-400"

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Mail, Lock, Eye, EyeOff, Zap, CheckCircle2, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
+import { api } from "@/services/api";
+import { useAuth } from "@/context/AuthContext";
 
 const TABS = [
   { id: "login", label: "Sign in" },
@@ -10,12 +12,14 @@ const TABS = [
 
 export default function AuthPage() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [tab, setTab] = useState("login");
   const [showPwd, setShowPwd] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [touched, setTouched] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   const isSignup = tab === "signup";
 
@@ -25,15 +29,35 @@ export default function AuthPage() {
 
   const formValid = emailValid && passwordValid && (!isSignup || confirmValid);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setTouched({ email: true, password: true, confirm: true });
     if (!formValid) {
       toast.error("Please fix the highlighted fields");
       return;
     }
-    toast.success(isSignup ? "Account created (UI mock)" : "Signed in (UI mock)");
-    setTimeout(() => navigate("/"), 700);
+
+    try {
+      setSubmitting(true);
+
+      if (isSignup) {
+        await api.auth.signup(email, password);
+        toast.success("Account created. Please sign in.");
+        setTab("login");
+        setPassword("");
+        setConfirm("");
+        return;
+      }
+
+      const auth = await api.auth.login(email, password);
+      login(auth.token);
+      toast.success("Signed in");
+      navigate("/");
+    } catch (error) {
+      toast.error(error.message || "Authentication failed");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -177,9 +201,10 @@ export default function AuthPage() {
             <button
               type="submit"
               data-testid="auth-submit-btn"
+              disabled={submitting}
               className="w-full inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-black text-sm font-semibold transition shadow-[0_8px_24px_rgba(16,185,129,0.25)]"
             >
-              {isSignup ? "Create account" : "Sign in"}
+              {submitting ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
             </button>
 
             <div className="flex items-center gap-3 py-1">

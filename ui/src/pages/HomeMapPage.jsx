@@ -2,27 +2,50 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search as SearchIcon, SlidersHorizontal, X, ChevronUp, Filter, Locate } from "lucide-react";
-import { STATIONS, NEAREST_STATION_ID } from "@/data/stations";
 import Navbar from "@/components/Navbar";
-import MockMap from "@/components/MockMap";
+import HomeMapGoogleMap from "@/components/HomeMapGoogleMap";
 import StationCard from "@/components/StationCard";
 import StationCardSkeleton from "@/components/StationCardSkeleton";
+import { STATIONS } from "@/data/stations";
+import { getNearbyStations } from "@/services/stationService";
 
 export default function HomeMapPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
-  const [selectedId, setSelectedId] = useState(NEAREST_STATION_ID);
+  const [selectedId, setSelectedId] = useState(null);
+  const [stationData, setStationData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 700);
-    return () => clearTimeout(t);
+    let active = true;
+
+    const loadStations = async () => {
+      try {
+        const nearbyStations = await getNearbyStations();
+
+        if (!active) return;
+
+        setStationData(nearbyStations);
+        setSelectedId(nearbyStations[0]?.id || null);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadStations();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   const stations = useMemo(() => {
-    let list = [...STATIONS].sort((a, b) => a.distance_km - b.distance_km);
+    const sourceStations = stationData.length > 0 ? stationData : STATIONS;
+    let list = [...sourceStations].sort((a, b) => a.distance_km - b.distance_km);
     if (onlyAvailable) list = list.filter((s) => s.availability === "available");
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -34,23 +57,43 @@ export default function HomeMapPage() {
       );
     }
     return list;
-  }, [query, onlyAvailable]);
+  }, [stationData, query, onlyAvailable]);
+
+  const countsSource = stationData.length > 0 ? stationData : STATIONS;
 
   const counts = {
-    available: STATIONS.filter((s) => s.availability === "available").length,
-    busy: STATIONS.filter((s) => s.availability === "busy").length,
-    offline: STATIONS.filter((s) => s.availability === "offline").length,
+    available: countsSource.filter((s) => s.availability === "available").length,
+    busy: countsSource.filter((s) => s.availability === "busy").length,
+    offline: countsSource.filter((s) => s.availability === "offline").length,
   };
+
+  const selectedStationId = selectedId && stations.some((s) => s.id === selectedId)
+    ? selectedId
+    : stations[0]?.id;
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#050505] text-white">
       <Navbar floating />
 
-      <MockMap
-        stations={STATIONS}
-        nearestId={NEAREST_STATION_ID}
-        selectedId={selectedId}
-        onSelect={(s) => setSelectedId(s.id)}
+      <HomeMapGoogleMap
+        stations={stations}
+        nearestId={stations[0]?.id}
+        selectedId={selectedStationId}
+        onSelect={(s, ev) => {
+          // If Ctrl/Meta is pressed, navigate to details page
+          const ctrl = ev?.domEvent?.ctrlKey || ev?.domEvent?.metaKey || ev?.domEvent?.which === 1 && (ev?.domEvent?.ctrlKey || ev?.domEvent?.metaKey);
+          if (ctrl) {
+            navigate(`/station/${s.id}`);
+            return;
+          }
+
+          // Otherwise select and scroll the sidebar card into view
+          setSelectedId(s.id);
+          setTimeout(() => {
+            const card = document.querySelector(`[data-testid="station-card-${s.id}"]`);
+            if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 120);
+        }}
         className="absolute inset-0 rounded-none"
       />
 
@@ -135,7 +178,7 @@ export default function HomeMapPage() {
                 className="fade-up"
                 style={{ animationDelay: `${i * 0.04}s` }}
               >
-                <StationCard station={s} isNearest={s.id === NEAREST_STATION_ID} />
+                <StationCard station={s} isNearest={s.id === stations[0]?.id} isSelected={s.id === selectedStationId} />
               </div>
             ))
           )}
@@ -194,7 +237,8 @@ export default function HomeMapPage() {
                 <StationCard
                   key={s.id}
                   station={s}
-                  isNearest={s.id === NEAREST_STATION_ID}
+                  isNearest={s.id === stations[0]?.id}
+                  isSelected={s.id === selectedStationId}
                   compact={!sheetOpen}
                 />
               ))

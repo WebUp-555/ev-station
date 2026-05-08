@@ -1,23 +1,49 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+
+const TOKEN_KEY = "ev-station-token";
 
 const AuthContext = createContext();
 
-export const AuthProvider = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState(null);
+const decodeToken = (token) => {
+  try {
+    const payload = token.split(".")[1];
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(normalized.length + ((4 - (normalized.length % 4)) % 4), "=");
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+};
 
-  const login = (userData) => {
-    setUser(userData);
-    setIsAuthenticated(true);
+export const AuthProvider = ({ children }) => {
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || "");
+  const [user, setUser] = useState(() => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    return storedToken ? decodeToken(storedToken) : null;
+  });
+
+  useEffect(() => {
+    if (!token) {
+      localStorage.removeItem(TOKEN_KEY);
+      setUser(null);
+      return;
+    }
+
+    localStorage.setItem(TOKEN_KEY, token);
+    setUser(decodeToken(token));
+  }, [token]);
+
+  const login = (nextToken) => {
+    setToken(nextToken);
   };
 
   const logout = () => {
-    setUser(null);
-    setIsAuthenticated(false);
+    setToken("");
   };
 
   const value = {
-    isAuthenticated,
+    token,
+    isAuthenticated: Boolean(token),
     user,
     login,
     logout,

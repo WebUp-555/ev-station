@@ -1,22 +1,62 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search as SearchIcon, X, MapPin, Zap, ArrowRight, SlidersHorizontal } from "lucide-react";
+import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
+import { Search as SearchIcon, X, MapPin, Zap, ArrowRight, SlidersHorizontal, AlertCircle } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import MockMap from "@/components/MockMap";
 import StationCardSkeleton from "@/components/StationCardSkeleton";
 import StatusBadge from "@/components/StatusBadge";
-import { STATIONS, NEAREST_STATION_ID } from "@/data/stations";
+import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_LOADER_ID } from "@/config/googleMaps";
+import { getNearbyStations, searchStationsByCoords, searchStationsByPlace } from "@/services/stationService";
+import { useStations } from "@/context/StationContext";
 
 const POPULAR = ["Embarcadero", "SoMa", "Castro", "Tesla", "Fast Charge"];
 
 export default function SearchPage() {
   const navigate = useNavigate();
+  const autocompleteRef = useRef(null);
+  const { setLastStations } = useStations();
   const [query, setQuery] = useState("");
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [stationsLoading, setStationsLoading] = useState(true);
+  const [stationData, setStationData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hoveredId, setHoveredId] = useState(null);
+  const [isPlaceSearch, setIsPlaceSearch] = useState(false);
+  const [searchError, setSearchError] = useState(null);
+  const [mapLocation, setMapLocation] = useState("Nearby");
+
+  const { isLoaded } = useJsApiLoader({
+    id: GOOGLE_MAPS_LOADER_ID,
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+    libraries: GOOGLE_MAPS_LIBRARIES,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    const loadStations = async () => {
+      try {
+        const nearbyStations = await getNearbyStations();
+
+        if (active) {
+          setStationData(nearbyStations);
+        }
+      } finally {
+        if (active) {
+          setStationsLoading(false);
+        }
+      }
+    };
+
+    loadStations();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!query) return;
@@ -25,20 +65,100 @@ export default function SearchPage() {
     return () => clearTimeout(t);
   }, [query]);
 
+  const handlePlaceSelected = async () => {
+    if (!autocompleteRef.current) return;
+    const place = autocompleteRef.current.getPlace();
+    console.log('[SearchPage] Place selected:', place);
+    const lat = place?.geometry?.location?.lat?.();
+    const lng = place?.geometry?.location?.lng?.();
+
+    if (!place || !place.formatted_address || lat == null || lng == null) {
+      console.warn('[SearchPage] Invalid place or missing geometry');
+      return;
+    }
+
+    console.log('[SearchPage] Searching for place:', place.formatted_address);
+    setLoading(true);
+    setSearchError(null);
+    setIsPlaceSearch(true);
+    setMapLocation(place.formatted_address.split(',')[0]);
+    try {
+      const results = await searchStationsByCoords(lat, lng);
+      console.log('[SearchPage] Search returned:', results);
+      if (results.length === 0) {
+        console.warn('[SearchPage] No stations found for:', place.formatted_address);
+        setSearchError(`No stations found near ${place.formatted_address}`);
+      }
+      setStationData(results);
+      setLastStations(results);
+      setHoveredId(null);
+    } catch (err) {
+      console.error('[SearchPage] Search error:', err);
+      setSearchError("Failed to search stations for this place");
+    } finally {
+      setLoading(false);
+      setStationsLoading(false);
+    }
+  };
+
+  const handleSearchInputKeyDown = async (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+
+    if (!query.trim()) return;
+
+    const selectedPlace = autocompleteRef.current?.getPlace?.();
+    const selectedLat = selectedPlace?.geometry?.location?.lat?.();
+    const selectedLng = selectedPlace?.geometry?.location?.lng?.();
+
+    console.log('[SearchPage] Enter pressed with query:', query);
+    setLoading(true);
+    setSearchError(null);
+    setIsPlaceSearch(true);
+
+    try {
+      let results = [];
+
+      if (selectedLat != null && selectedLng != null) {
+        console.log('[SearchPage] Using selected place geometry from autocomplete');
+        results = await searchStationsByCoords(selectedLat, selectedLng);
+      } else {
+        console.log('[SearchPage] No selected place geometry, using backend geocode fallback');
+        results = await searchStationsByPlace(query);
+      }
+
+      console.log('[SearchPage] Place search returned:', results.length, 'stations');
+      
+      if (results.length === 0) {
+        console.warn('[SearchPage] Place search returned 0 results');
+        setSearchError(`No stations found near "${query}"`);
+      }
+      setStationData(results);
+      setLastStations(results);
+      setHoveredId(null);
+    } catch (err) {
+      console.error('[SearchPage] Error during place search:', err);
+      setSearchError("Failed to search for this location");
+    } finally {
+      setLoading(false);
+      setStationsLoading(false);
+    }
+  };
+
   const suggestions = useMemo(() => {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
-    return STATIONS.filter(
+    return stationData.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
         s.address.toLowerCase().includes(q) ||
         s.operator.toLowerCase().includes(q)
     ).slice(0, 5);
-  }, [query]);
+  }, [query, stationData]);
 
   const results = useMemo(() => {
-    let list = [...STATIONS];
-    if (query.trim()) {
+    let list = [...stationData];
+    if (query.trim() && !isPlaceSearch) {
       const q = query.toLowerCase();
       list = list.filter(
         (s) =>
@@ -49,7 +169,9 @@ export default function SearchPage() {
     }
     if (onlyAvailable) list = list.filter((s) => s.availability === "available");
     return list.sort((a, b) => a.distance_km - b.distance_km);
-  }, [query, onlyAvailable]);
+  }, [query, onlyAvailable, stationData, isPlaceSearch]);
+
+  const nearestId = results[0]?.id;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white">
@@ -72,23 +194,53 @@ export default function SearchPage() {
 
         <div className="mt-8 flex flex-col gap-3 fade-up" style={{ animationDelay: "0.05s" }}>
           <div className="relative">
-            <SearchIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
-            <input
-              data-testid="search-input"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setShowSuggestions(true);
-              }}
-              onFocus={() => setShowSuggestions(true)}
-              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-              placeholder="Search by station name, operator or address…"
-              className="w-full pl-14 pr-14 py-5 rounded-2xl bg-[#0e0e10] border border-zinc-800 text-base text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition"
-            />
+            <SearchIcon className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500 pointer-events-none z-10" />
+            {isLoaded ? (
+              <Autocomplete
+                onLoad={(ref) => (autocompleteRef.current = ref)}
+                onPlaceChanged={handlePlaceSelected}
+              >
+                <input
+                  data-testid="search-input"
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setShowSuggestions(true);
+                    setIsPlaceSearch(false);
+                    setSearchError(null);
+                  }}
+                  onKeyDown={handleSearchInputKeyDown}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                  placeholder="Search by city, station name, or operator…"
+                  className="w-full pl-14 pr-14 py-5 rounded-2xl bg-[#0e0e10] border border-zinc-800 text-base text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition"
+                />
+              </Autocomplete>
+            ) : (
+              <input
+                data-testid="search-input"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setShowSuggestions(true);
+                  setIsPlaceSearch(false);
+                  setSearchError(null);
+                }}
+                onKeyDown={handleSearchInputKeyDown}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                placeholder="Search by city, station name, or operator…"
+                className="w-full pl-14 pr-14 py-5 rounded-2xl bg-[#0e0e10] border border-zinc-800 text-base text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/30 transition"
+              />
+            )}
             {query && (
               <button
                 data-testid="search-clear-btn"
-                onClick={() => setQuery("")}
+                onClick={() => {
+                  setQuery("");
+                  setIsPlaceSearch(false);
+                  setSearchError(null);
+                }}
                 className="absolute right-5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-lg bg-zinc-900 border border-zinc-800 grid place-items-center hover:border-zinc-700 text-zinc-400"
               >
                 <X className="w-3.5 h-3.5" />
@@ -122,6 +274,17 @@ export default function SearchPage() {
               </div>
             )}
           </div>
+
+          <div className="text-xs text-zinc-500 px-1">
+            💡 Tip: Try searching by city (e.g., Secunderabad, Kadapa, Vijayawada) or station name
+          </div>
+
+          {searchError && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-red-200">{searchError}</p>
+            </div>
+          )}
 
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -163,14 +326,14 @@ export default function SearchPage() {
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6">
           <div className="space-y-3">
-            {loading ? (
+            {stationsLoading || loading ? (
               <>
                 <StationCardSkeleton />
                 <StationCardSkeleton />
                 <StationCardSkeleton />
               </>
             ) : results.length === 0 ? (
-              <NoResults query={query} />
+              <NoResults query={query} isPlaceSearch={isPlaceSearch} />
             ) : (
               results.map((s, i) => (
                 <SearchRow
@@ -180,7 +343,7 @@ export default function SearchPage() {
                   onMouseEnter={() => setHoveredId(s.id)}
                   onMouseLeave={() => setHoveredId(null)}
                   onClick={() => navigate(`/station/${s.id}`)}
-                  isNearest={s.id === NEAREST_STATION_ID}
+                  isNearest={s.id === nearestId}
                   delay={i}
                 />
               ))
@@ -194,8 +357,9 @@ export default function SearchPage() {
               </p>
               <MockMap
                 stations={results}
-                nearestId={NEAREST_STATION_ID}
+                nearestId={nearestId}
                 selectedId={hoveredId}
+                location={mapLocation}
                 className="h-[460px]"
               />
             </div>
@@ -253,7 +417,7 @@ const SearchRow = ({ station, highlighted, onMouseEnter, onMouseLeave, onClick, 
   </button>
 );
 
-const NoResults = ({ query }) => (
+const NoResults = ({ query, isPlaceSearch }) => (
   <div
     data-testid="no-results"
     className="rounded-3xl border border-zinc-800 bg-[#0e0e10] p-10 text-center"
@@ -261,9 +425,20 @@ const NoResults = ({ query }) => (
     <div className="mx-auto w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 grid place-items-center">
       <SearchIcon className="w-6 h-6 text-zinc-600" />
     </div>
-    <h3 className="mt-4 font-display text-xl font-bold">No matches for “{query || "your search"}”</h3>
-    <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
-      Try a different keyword, or remove filters. We're constantly adding new stations near you.
-    </p>
+    {isPlaceSearch ? (
+      <>
+        <h3 className="mt-4 font-display text-xl font-bold">No stations found near "{query}"</h3>
+        <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
+          Try a different city or area. We're constantly expanding to new locations.
+        </p>
+      </>
+    ) : (
+      <>
+        <h3 className="mt-4 font-display text-xl font-bold">No matches for "{query || "your search"}"</h3>
+        <p className="mt-2 text-sm text-zinc-500 max-w-md mx-auto">
+          Try a different keyword, city, or remove filters. We're constantly adding new stations near you.
+        </p>
+      </>
+    )}
   </div>
 );

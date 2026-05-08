@@ -44,9 +44,11 @@ export const api = {
 	},
 	stations: {
 		nearby: (lat, lng) => request(`/api/stations/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`),
+		geocode: (query) => request(`/api/stations/geocode?q=${encodeURIComponent(query)}`),
 	},
 	favorites: {
 		list: (token) => request('/api/favorites', { token }),
 		add: (token, payload) => request('/api/favorites', { method: 'POST', token, body: payload }),
+		remove: (token, payload) => request('/api/favorites', { method: 'DELETE', token, body: payload }),
 	},
 }
