@@ -206,24 +206,6 @@ export default function AuthPage() {
             >
               {submitting ? "Please wait..." : isSignup ? "Create account" : "Sign in"}
             </button>
-
-            <div className="flex items-center gap-3 py-1">
-              <span className="flex-1 h-px bg-zinc-800" />
-              <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-500 font-semibold">
-                or
-              </span>
-              <span className="flex-1 h-px bg-zinc-800" />
-            </div>
-
-            <button
-              type="button"
-              data-testid="auth-google-btn"
-              onClick={() => toast("Google sign-in is UI-only in this demo")}
-              className="w-full inline-flex items-center justify-center gap-3 px-5 py-3.5 rounded-2xl border border-zinc-800 bg-zinc-950 hover:bg-zinc-900 text-white text-sm font-semibold transition"
-            >
-              <GoogleIcon />
-              Continue with Google
-            </button>
           </form>
         </div>
 
