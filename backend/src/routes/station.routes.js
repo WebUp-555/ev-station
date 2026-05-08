@@ -1,7 +1,8 @@
 import express from "express";
-import { getNearby } from "../controllers/station.controller.js";
+import { geocodePlace, getNearby } from "../controllers/station.controller.js";
 
 const router = express.Router();
 router.get("/nearby", getNearby);
+router.get("/geocode", geocodePlace);
 
 export default router;
