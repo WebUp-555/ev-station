@@ -71,6 +71,26 @@ export default function HomeMapPage() {
     ? selectedId
     : stations[0]?.id;
 
+  const scrollToStationCard = (stationId) => {
+    const isMobile = window.matchMedia("(max-width: 1023px)").matches;
+
+    if (isMobile) {
+      setSheetOpen(true);
+    }
+
+    setTimeout(() => {
+      const scopeSelector = isMobile
+        ? '[data-testid="mobile-bottom-sheet"]'
+        : '[data-testid="desktop-side-panel"]';
+      const cardSelector = `[data-testid="station-card-${stationId}"]`;
+      const card = document.querySelector(`${scopeSelector} ${cardSelector}`);
+
+      if (card) {
+        card.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, isMobile ? 220 : 120);
+  };
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-[#050505] text-white">
       <Navbar floating />
@@ -89,10 +109,7 @@ export default function HomeMapPage() {
 
           // Otherwise select and scroll the sidebar card into view
           setSelectedId(s.id);
-          setTimeout(() => {
-            const card = document.querySelector(`[data-testid="station-card-${s.id}"]`);
-            if (card) card.scrollIntoView({ behavior: "smooth", block: "center" });
-          }, 120);
+          scrollToStationCard(s.id);
         }}
         className="absolute inset-0 rounded-none"
       />
