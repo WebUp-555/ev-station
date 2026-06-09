@@ -4,8 +4,8 @@ import MockMap from "@/components/MockMap";
 import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_LOADER_ID } from "@/config/googleMaps";
 
 const DEFAULT_CENTER = {
-  lat: 37.7749,
-  lng: -122.4194,
+  lat: 20,
+  lng: 0,
 };
 
 const mapContainerStyle = {

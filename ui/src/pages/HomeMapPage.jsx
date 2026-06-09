@@ -6,7 +6,6 @@ import Navbar from "@/components/Navbar";
 import HomeMapGoogleMap from "@/components/HomeMapGoogleMap";
 import StationCard from "@/components/StationCard";
 import StationCardSkeleton from "@/components/StationCardSkeleton";
-import { STATIONS } from "@/data/stations";
 import { getNearbyStations } from "@/services/stationService";
 
 export default function HomeMapPage() {
@@ -44,8 +43,7 @@ export default function HomeMapPage() {
   }, []);
 
   const stations = useMemo(() => {
-    const sourceStations = stationData.length > 0 ? stationData : STATIONS;
-    let list = [...sourceStations].sort((a, b) => a.distance_km - b.distance_km);
+    let list = [...stationData].sort((a, b) => a.distance_km - b.distance_km);
     if (onlyAvailable) list = list.filter((s) => s.availability === "available");
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -59,7 +57,7 @@ export default function HomeMapPage() {
     return list;
   }, [stationData, query, onlyAvailable]);
 
-  const countsSource = stationData.length > 0 ? stationData : STATIONS;
+  const countsSource = stationData;
 
   const counts = {
     available: countsSource.filter((s) => s.availability === "available").length,
@@ -131,6 +129,10 @@ export default function HomeMapPage() {
           >
             Advanced
           </button>
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-center text-[11px] leading-5 text-amber-100 backdrop-blur">
+          Wait for 1 min for results. The free-tier deployment can take a while to wake up.
         </div>
 
         <div className="mt-3 flex items-center gap-2 justify-center">

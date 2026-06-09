@@ -14,7 +14,7 @@ export const MockMap = ({
   zoomable = true,
   className = "",
   compact = false,
-  location = "San Francisco",
+  location = "Nearby area",
 }) => {
   const navigate = useNavigate();
 
